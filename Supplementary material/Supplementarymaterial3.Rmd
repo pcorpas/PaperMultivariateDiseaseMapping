@@ -1,0 +1,273 @@
+---
+title: "Used code in the simulation study"
+output: pdf_document
+---
+
+# 1. Simulation of data for each setting and city
+
+```{r echo=FALSE}
+knitr::opts_chunk$set(eval = FALSE, echo = TRUE, tidy = TRUE, tidy.opts = list(blank = FALSE, width.cutoff = 40))
+```
+
+## Load libraries and data
+
+```{r}
+# Working directory
+DirMain = " " # Set an appropriate directory
+setwd(DirMain)
+# Load library and data
+library(R2WinBUGS)
+library(knitr)
+library(pbugs) # For running the models in parallel calls to WinBUGS
+load("datos.Rdata")
+
+# Function to generate values of a CAR distribution
+Genera_CAR <- function(desv, nvec, adj, rho = 1){
+  n <- length(nvec)
+  D.W <- matrix(0, n, n)
+  diag(D.W) <- nvec
+  indice_veci <- cbind(rep(1:n, nvec), adj)  
+  D.W[indice_veci]<- -rho
+  UDUt <- eigen(D.W)
+  rango <- sum(UDUt$values > 1e-10)
+  Spat <- as.vector(UDUt$vectors[, 1:rango] %*% matrix(rnorm(rango, 0, 
+                            UDUt$values[1:rango]^{-1/2}), ncol = 1))*desv
+  return(Spat)
+}
+
+# Seeds for each replica (1:5) and city (1: Alicante, 2:Castellón, 3:Valencia)
+seeds <- list()
+seeds[[1]] <- c(20, 54, 86, 92, 6)
+seeds[[2]] <- c(89, 94, 102, 92, 6)
+seeds[[3]] <- c(20, 54, 67, 92, 6)
+```
+
+## Setting 1
+
+```{r}
+
+for(City in 1:3){ # 1: Alicante, 2:Castellón, 3:Valencia
+  for(Ndiseases in c(5, 10)){
+    # Expected cases
+    E <- t(apply(Esp[[City]][[1]][1, , , ], c(1, 2), sum))[, 1:Ndiseases]
+    for(Replica in 1:5){
+      # Matrix with spatial random effects for each disease
+      Y <- matrix(NA, nrow = dim(Carto[[City]])[1], ncol = Ndiseases)
+      # Matrix with simulated observed cases for each disease
+      Obs_simu <- matrix(NA, nrow = dim(Carto[[City]])[1], ncol = Ndiseases)
+      
+      # Common spatial pattern to all diseases
+      set.seed(79*seeds[[City]][Replica])
+      patron_comun <- Genera_CAR(desv = 0, nvec = sapply(nb[[City]], length), 
+                                 adj = unlist(nb[[City]]), rho = 0.9)
+      
+      # Specific spatial pattern for each disease
+      # First disease
+      i <- 1
+      set.seed(i*seeds[[City]][Replica])
+      Y[, i] <- patron_comun + Genera_CAR(desv = 1, nvec = sapply(nb[[City]], length), 
+                                          adj = unlist(nb[[City]]), rho = 0.9)
+      
+      # Other diseases
+      for(i in 2:Ndiseases){
+        set.seed(i*seeds[[City]][Replica])
+        Y[, i] <- patron_comun + Genera_CAR(desv = 0.2, nvec = sapply(nb[[City]], length), 
+                                            adj = unlist(nb[[City]]), rho = 0.9)
+      }
+      
+      # Simulation of the observed cases for each disease
+      for(i in 1:Ndiseases){
+        mu_Obs <- exp(Y[,i]) * E[,i]
+        set.seed(i)
+        Obs_simu[, i] <- rpois(dim(Carto[[City]])[1], mu_Obs)
+      }
+
+      save(Obs_simu, Y, E, file = paste0(City, "/", Ndiseases, " enfermedades/Escenario 1/
+                                         datos_simulados", Replica, ".RData"))
+    }
+  }
+}
+
+# Next, adjust the BYM model with independent diseases, NVA M-model, RVA M-model and 
+# CVA M-Model to the simulated observed cases for each data set (following the code 
+# specified in the document RCode.pdf).
+```
+
+## Setting 2
+
+```{r}
+
+for(City in 1:3){ # 1: Alicante, 2:Castellón, 3:Valencia
+  for(Ndiseases in c(5, 10)){
+    # Expected cases
+    E <- t(apply(Esp[[City]][[1]][1, , , ], c(1, 2), sum))[, 1:Ndiseases]
+    for(Replica in 1:5){
+      # Matrix with spatial random effects for each disease
+      Y <- matrix(NA, nrow = dim(Carto[[City]])[1], ncol = Ndiseases)
+      # Matrix with simulated observed cases for each disease
+      Obs_simu <- matrix(NA, nrow = dim(Carto[[City]])[1], ncol = Ndiseases)
+      
+      # Common spatial pattern to all diseases
+      set.seed(79*seeds[[City]][Replica])
+      patron_comun <- Genera_CAR(desv = 0.5, nvec = sapply(nb[[City]], length), 
+                                 adj = unlist(nb[[City]]), rho = 0.9)
+      
+      # Specific spatial pattern for each disease
+      # First disease
+      i <- 1
+      set.seed(i*seeds[[City]][Replica])
+      Y[, i] <- patron_comun + Genera_CAR(desv = 1, nvec = sapply(nb[[City]], length), 
+                                          adj = unlist(nb[[City]]), rho = 0.9)
+      
+      # Other diseases
+      for(i in 2:Ndiseases){
+        set.seed(i*seeds[[City]][Replica])
+        Y[, i] <- patron_comun + Genera_CAR(desv = 0.2, nvec = sapply(nb[[City]], length), 
+                                            adj = unlist(nb[[City]]), rho = 0.9)
+      }
+      
+      # Simulation of the observed cases for each disease
+      for(i in 1:Ndiseases){
+        mu_Obs <- exp(Y[,i]) * E[,i]
+        set.seed(i)
+        Obs_simu[, i] <- rpois(dim(Carto[[City]])[1], mu_Obs)
+      }
+
+      save(Obs_simu, Y, E, file = paste0(City, "/", Ndiseases, " enfermedades/Escenario 2/
+                                         datos_simulados", Replica, ".RData"))
+    }
+  }
+}
+
+# Next, adjust the BYM model with independent diseases, NVA M-model, RVA M-model and 
+# CVA M-Model to the simulated observed cases for each data set (following the code 
+# specified in the document RCode.pdf).
+```
+
+## Setting 3
+
+```{r}
+
+for(City in 1:3){ # 1: Alicante, 2:Castellón, 3:Valencia
+  for(Ndiseases in c(5, 10)){
+    # Expected cases
+    E <- t(apply(Esp[[City]][[1]][1, , , ], c(1, 2), sum))[, 1:Ndiseases]
+    for(Replica in 1:5){
+      # Matrix with spatial random effects for each disease
+      Y <- matrix(NA, nrow = dim(Carto[[City]])[1], ncol = Ndiseases)
+      # Matrix with simulated observed cases for each disease
+      Obs_simu <- matrix(NA, nrow = dim(Carto[[City]])[1], ncol = Ndiseases)
+      
+      # Common spatial pattern to all diseases
+      set.seed(79*seeds[[City]][Replica])
+      patron_comun <- Genera_CAR(desv = 1, nvec = sapply(nb[[City]], length), 
+                                 adj = unlist(nb[[City]]), rho = 0.9)
+      
+      # Specific spatial pattern for each disease
+      # First disease
+      i <- 1
+      set.seed(i*seeds[[City]][Replica])
+      Y[, i] <- patron_comun + Genera_CAR(desv = 1, nvec = sapply(nb[[City]], length), 
+                                          adj = unlist(nb[[City]]), rho = 0.9)
+      
+      # Other diseases
+      for(i in 2:Ndiseases){
+        set.seed(i*seeds[[City]][Replica])
+        Y[, i] <- patron_comun + Genera_CAR(desv = 0.2, nvec = sapply(nb[[City]], length), 
+                                            adj = unlist(nb[[City]]), rho = 0.9)
+      }
+      
+      # Simulation of the observed cases for each disease
+      for(i in 1:Ndiseases){
+        mu_Obs <- exp(Y[,i]) * E[,i]
+        set.seed(i)
+        Obs_simu[, i] <- rpois(dim(Carto[[City]])[1], mu_Obs)
+      }
+
+      save(Obs_simu, Y, E, file = paste0(City, "/", Ndiseases, " enfermedades/Escenario 3/
+                                         datos_simulados", Replica, ".RData"))
+    }
+  }
+}
+
+# Next, adjust the BYM model with independent diseases, NVA M-model, RVA M-model and 
+# CVA M-Model to the simulated observed cases for each data set (following the code 
+# specified in the document RCode.pdf).
+```
+
+# 2. Mean standard deviation of the risks for the first disease and for the rest of diseases in each setting, city and model used in the adjustment of the data
+
+```{r}
+
+# Specify number of diseases (in our study 5 and 10 diseases)
+Ndiseases <- 5
+
+# Object in which we save the results
+Resul <- list()
+for(City in 1:3){
+  Resul[[City]] <- list()
+}
+names(Resul) <- c("Alicante", "Castellon", "Valencia")
+n_geographicalunits <- c(215, 95, 553)
+names(n_geographicalunits) <- c("Alicante", "Castellon", "Valencia")
+
+for(City in 1:3){ 
+  for(Setting in 1:3){
+    # Object in which we save the simulated spatial patterns for each disease in each 
+    # replica
+    Sim_data <- array(NA, dim = c(5, n_geographicalunits[City], Ndiseases)) 
+    # Object in which we save the estimated risks with the BYM model with independent 
+    # diseases for each replica
+    BYM_indep <- array(NA, dim = c(5, n_geographicalunits[City], Ndiseases))
+    # Object in which we save the estimated risks with the NVA M-model for each replica
+    NVA <- array(NA, dim = c(5, n_geographicalunits[City], Ndiseases))
+    # Object in which we save the estimated risks with the CVA M-model for each replica
+    CVA <- array(NA, dim = c(5, n_geographicalunits[City], Ndiseases))
+    # Object in which we save the estimated risks with the RVA M-model for each replica
+    RVA <- array(NA, dim = c(5, n_geographicalunits[City], Ndiseases))
+    
+    for(Replica in 1:5){ 
+      # Simulated observed cases
+      load(paste0(City, "/", Ndiseases, " enfermedades/Escenario ", Setting, 
+                  "/datos_simulados", Replica, ".RData"))
+      Sim_data[Replica, , ] <- Y
+      # Estimated risks with the BYM model with independent diseases
+      load(paste0(City, "/", Ndiseases, " enfermedades/Escenario ", Setting, 
+                  "/Resultados/Replica ", Replica, "/resul.BYMIndep.Rdata"))
+      BYM_indep[Replica, , ] <- result$mean$SMR
+      # Estimated risks with NVA M-model
+      load(paste0(City, "/", Ndiseases, " enfermedades/Escenario ", Setting, 
+                  "/Resultados/Replica ", Replica, "/resul.MmodelRE.Rdata"))
+      NVA[Replica, , ] <- result$mean$SMR
+      # Estimated risks with CVA M-model
+      load(paste0(City, "/", Ndiseases, " enfermedades/Escenario ", Setting, 
+                  "/Resultados/Replica ", Replica, "/resul.MmodelCVA.Rdata"))
+      CVA[Replica, , ] <- result$mean$SMR
+      # Estimated risks with RVA M-model
+      load(paste0(City, "/", Ndiseases, " enfermedades/Escenario ", Setting, 
+                  "/Resultados/Replica ", Replica, "/resul.MmodelRVA.Rdata"))
+      RVA[Replica, , ] <- result$mean$SMR
+    }
+    
+    # Original standard deviation of the simulated spatial patterns 
+    # and standard deviation of the estimated risks with each model
+    Resul[[City]][[Setting]] <- list()
+    Resul[[City]][[Setting]]$sds <- cbind(apply(apply(exp(Sim_data), c(1, 3), sd), 2, mean), 
+                                             apply(apply(BYM_indep, c(1, 3), sd), 2, mean), 
+                                             apply(apply(NVA, c(1, 3), sd), 2, mean), 
+                                             apply(apply(CVA, c(1, 3), sd), 2, mean), 
+                                             apply(apply(RVA, c(1, 3), sd), 2, mean))
+    dimnames(Resul[[City]][[Setting]]$sds)[[2]] <- c("Original", "BYM", "NVA", "CVA", "RVA")
+  }
+}
+
+# Mean standard deviation of the first spatial pattern and the rest of spatial patterns
+for(City in 1:3){ 
+  for(Setting in 1:3){ 
+    print(paste0("# ", names(Resul)[City], ", Escenario ", Setting, ", ", Ndiseases, 
+                 " enfermedades"))
+    print(round(rbind(Resul[[City]][[Setting]]$sds[1,], 
+                      apply(Resul[[City]][[Setting]]$sds[2:Ndiseases,], 2, mean)), 2))
+  }
+}
+```
